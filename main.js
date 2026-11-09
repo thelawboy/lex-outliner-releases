@@ -1,8 +1,10 @@
 // Lex Outliner for the Mac: a window that opens the web app (so every update to lex.nicholasgirard.com shows up here
-// with no new download), plus Touch Bar buttons for the node types, and updates of this app itself (update.js). The buttons send a command to the page through
+// with no new download), plus Touch Bar buttons for the node types, folder backups of your notes (backup.js), and
+// updates of this app itself (update.js). The buttons send a command to the page through
 // preload.js; the page runs it like its own toolbar button (src/app/desktop.ts). Nothing here touches your data.
-const { app, BrowserWindow, TouchBar, shell, Menu, ipcMain, nativeImage } = require('electron');
+const { app, BrowserWindow, TouchBar, shell, Menu, ipcMain, nativeImage, dialog } = require('electron');
 const { checkUpdates } = require('./update');
+const { writeBackup } = require('./backup');
 const fs = require('fs');
 const path = require('path');
 
@@ -14,11 +16,11 @@ const INSIDE = new Set([HOST, 'www.overleaf.com', 'overleaf.com']);
 /** The Touch Bar until the page says how it should look: [label, command, color]. */
 const BUTTONS = [
   ['Class note', 'classnote', '#C2410C'],
-  ['Brief', 'brief', '#9E1B32'], ['Authority', 'authority', '#6A3FA0'], ['Problem', 'problem', '#3D7A2E'],
+  ['Case', 'case', '#9E1B32'], ['Brief', 'brief', '#9E1B32'], ['Authority', 'authority', '#6A3FA0'], ['Problem', 'problem', '#3D7A2E'],
   ['Summary', 'summary', '#8A6A00'], ['Rule', 'rule', '#1F4FA8'], ['Test', 'test', '#4F4FB8'],
   ['Outline', 'outline', ''], ['Beside notes', 'dual', ''],
 ];
-const GAP_BEFORE = new Set(['brief', 'outline']);
+const GAP_BEFORE = new Set(['case', 'outline']);
 
 const stateFile = () => path.join(app.getPath('userData'), 'window.json');
 function savedBounds() { try { return JSON.parse(fs.readFileSync(stateFile(), 'utf8')); } catch { return {}; } }
@@ -50,6 +52,37 @@ function touchBar(win, items) {
 }
 const defaultItems = () => BUTTONS.map(([label, cmd, color]) => ({ cmd, label, color, gap: GAP_BEFORE.has(cmd) }));
 const KNOWN = new Set(BUTTONS.map(b => b[1]));
+
+/* Folder backups (backup.js writes them). Settings live in backup.json in the app's own data folder: the folder you
+   chose, when the last backup was written, and the last error. The page asks for these through preload.js. */
+const bkFile = () => path.join(app.getPath('userData'), 'backup.json');
+function bkRead() { try { const j = JSON.parse(fs.readFileSync(bkFile(), 'utf8')); return { folder: typeof j.folder === 'string' ? j.folder : null, last: j.last || null, error: j.error || null, asked: !!j.asked }; } catch { return { folder: null, last: null, error: null, asked: false }; } }
+function bkWrite(st) { try { fs.writeFileSync(bkFile(), JSON.stringify(st)); } catch { /* not worth stopping for */ } }
+const bkStatus = () => { const { folder, last, error } = bkRead(); return { folder, last, error }; };
+async function bkChoose(win) {
+  const r = await dialog.showOpenDialog(win, { title: 'Choose a folder for Lex Outliner backups', buttonLabel: 'Back Up Here', properties: ['openDirectory', 'createDirectory'], message: 'Lex keeps its newest backup here, plus one a day for 30 days. A folder in iCloud Drive or Google Drive is copied online too.' });
+  if (!r.canceled && r.filePaths[0]) bkWrite({ ...bkRead(), folder: r.filePaths[0], error: null, asked: true });
+  return bkStatus();
+}
+/** Only the page from Lex's own site, in our window, may use these. */
+const fromSite = e => { try { return new URL(e.senderFrame.url).host === HOST; } catch { return false; } };
+ipcMain.handle('lex:backup-status', e => (fromSite(e) ? bkStatus() : null));
+ipcMain.handle('lex:backup-choose', e => (fromSite(e) ? bkChoose(BrowserWindow.fromWebContents(e.sender)) : null));
+ipcMain.handle('lex:backup-show', e => { if (fromSite(e)) { const f = bkRead().folder; if (f) shell.openPath(f); } });
+ipcMain.handle('lex:backup-save', async (e, files) => {
+  if (!fromSite(e)) return null;
+  const st = bkRead(); if (!st.folder) return bkStatus();
+  try { const last = await writeBackup(st.folder, files); bkWrite({ ...st, last, error: null }); }
+  catch (err) { bkWrite({ ...st, error: String(err && err.message ? err.message : err).slice(0, 200) }); }
+  return bkStatus();
+});
+/** Once, on the first launch with backups: offer to choose a folder. */
+async function offerBackups(win) {
+  const st = bkRead(); if (st.folder || st.asked) return;
+  bkWrite({ ...st, asked: true });
+  const { response } = await dialog.showMessageBox(win, { message: 'Back up your notes to a folder?', detail: 'Lex can keep a copy of all your notes in a folder on this Mac, updated a couple of minutes after you edit, with one copy a day for 30 days. Choose a folder in iCloud Drive or Google Drive and it’s copied online too. You can change this later in Settings → Backups.', buttons: ['Choose Folder…', 'Not Now'], defaultId: 0, cancelId: 1 });
+  if (response === 0) { await bkChoose(win); if (bkRead().folder && !win.isDestroyed()) win.webContents.send('lex:cmd', 'backup-now'); }
+}
 
 function open() {
   const b = savedBounds();
@@ -89,12 +122,13 @@ function open() {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: app.name, submenu: [{ role: 'about' }, { label: 'Check for Updates…', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) checkUpdates(w, true); } }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }, { role: 'fileMenu' }, { role: 'editMenu' },
+    { label: app.name, submenu: [{ role: 'about' }, { label: 'Check for Updates…', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) checkUpdates(w, true); } }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }, { label: 'File', submenu: [{ label: 'Back Up Now', accelerator: 'CmdOrCtrl+Shift+B', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) w.webContents.send('lex:cmd', 'backup-now'); } }, { label: 'Choose Backup Folder…', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) bkChoose(w); } }, { label: 'Show Backups in Finder', click: () => { const f = bkRead().folder; if (f) shell.openPath(f); } }, { type: 'separator' }, { role: 'close' }] }, { role: 'editMenu' },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, { type: 'separator' }, { role: 'toggleDevTools' }] },
     { role: 'windowMenu' },
   ]));
   const win = open();
   setTimeout(() => checkUpdates(win, false), 15000);
+  setTimeout(() => { if (!win.isDestroyed()) offerBackups(win); }, 8000);
   setInterval(() => { const w = BrowserWindow.getAllWindows()[0]; if (w) checkUpdates(w, false); }, 6 * 3600 * 1000);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) open(); });
 });

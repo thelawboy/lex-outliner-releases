@@ -1,8 +1,9 @@
 # Lex Outliner for Mac
 
-[Lex Outliner](https://lex.nicholasgirard.com) in its own window, with Touch Bar buttons: **Class note** | **Brief**,
+[Lex Outliner](https://lex.nicholasgirard.com) in its own window, with Touch Bar buttons: **Class Mode** | **Case**, **Case brief**,
 **Authority**, **Problem**, **Summary**, **Rule**, **Test** | **Outline** and **Outline beside notes**, each with Lex's
-icon in your node type's color.
+icon in your node type's color. It can also keep a backup of all your notes in a folder you choose (Settings → Backups,
+or File → Choose Backup Folder…): the newest copy, plus one a day for 30 days.
 
 The window shows the website, so every change to Lex reaches the app on its own. Only the app itself (the window, the
 Touch Bar, the menus) is updated from here, and it updates itself: when a new version is out it offers **Update and
@@ -26,6 +27,8 @@ notes, accounts, keys or passwords are here or in the app; your notes are stored
 
 - `main.js`: the window and the Touch Bar. Links to other sites open in your browser; Overleaf opens inside.
 - `preload.js`: all the website gets from the app: Touch Bar commands, and a way to say how the buttons look.
+- `backup.js`: folder backups. The website builds the backup; this writes it into your folder as `Latest/` and
+  `Daily/<date>/`, keeping 30 days, and accepts only the backup's own file names (tested in `test/backup.test.cjs`).
 - `update.js`: updates. It reads `latest.json` from the newest release here, downloads that release's zip only from
   this repository over HTTPS, checks it against the release's SHA-256 and the app's signature, then swaps it in and
   restarts.

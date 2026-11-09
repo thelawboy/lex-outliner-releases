@@ -1,13 +1,14 @@
 {
   "name": "lex-outliner-desktop",
   "productName": "Lex Outliner",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Lex Outliner for the Mac: the web app in its own window, with Touch Bar buttons.",
   "main": "main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --mac dir --universal --publish never"
+    "dist": "electron-builder --mac dir --universal --publish never",
+    "test": "node test/backup.test.cjs"
   },
   "devDependencies": {
     "electron": "45.2.3",
@@ -20,6 +21,7 @@
       "main.js",
       "preload.js",
       "update.js",
+      "backup.js",
       "package.json"
     ],
     "directories": {

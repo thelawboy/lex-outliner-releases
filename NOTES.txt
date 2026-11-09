@@ -1,1 +1,1 @@
-New: one-click updates. From now on, when a new version is out, Lex Outliner offers Update and Restart and installs it itself. Check any time with Lex Outliner → Check for Updates….
+New: folder backups. Choose a folder (Settings → Backups, or File → Choose Backup Folder…) and Lex keeps a copy of all your notes there, updated a couple of minutes after you edit, with one copy a day for 30 days. Pick a folder in iCloud Drive or Google Drive and it's copied online too. Also on the Touch Bar: a Case button for a short case box, beside Case brief.
