@@ -1,0 +1,52 @@
+# Builds Lex Outliner for the Mac on GitHub's Mac machines (free for public repositories) and publishes it as the release
+# v<version> from package.json, with latest.json ({version, sha256, notes}) that installed copies read to update
+# themselves. Unsigned (no Apple developer account): signed "ad hoc" so it runs on Apple-silicon Macs.
+# Runs when the app changes on main, or by hand (Actions → Release → Run workflow). Bump "version" for a new release.
+name: Release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['*.js', 'package.json', 'package-lock.json', 'build/**', 'NOTES.txt', '.github/workflows/release.yml']
+permissions:
+  contents: write
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Version
+        id: ver
+        run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Build (Intel and Apple silicon in one app)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac dir --universal --publish never
+      - name: Sign ad hoc, package, fingerprint
+        working-directory: dist
+        run: |
+          APP="$(ls -d mac-universal/*.app | head -1)"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          ditto -c -k --keepParent "$APP" Lex-Outliner-mac.zip
+          mkdir -p dmg && cp -R "$APP" dmg/ && ln -sf /Applications dmg/Applications
+          hdiutil create -volname "Lex Outliner" -srcfolder dmg -ov -format UDZO Lex-Outliner-mac.dmg
+          SUM="$(shasum -a 256 Lex-Outliner-mac.zip | cut -d' ' -f1)"
+          node -e 'const fs=require("fs");const notes=fs.existsSync("../NOTES.txt")?fs.readFileSync("../NOTES.txt","utf8").trim():"";fs.writeFileSync("latest.json",JSON.stringify({version:process.argv[1],sha256:process.argv[2],notes},null,2))' "${{ steps.ver.outputs.v }}" "$SUM"
+          cat latest.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.v }}
+          name: Lex Outliner for Mac ${{ steps.ver.outputs.v }}
+          make_latest: true
+          body_path: NOTES.txt
+          files: |
+            dist/Lex-Outliner-mac.dmg
+            dist/Lex-Outliner-mac.zip
+            dist/latest.json
+          overwrite_files: true

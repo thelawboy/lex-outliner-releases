@@ -1,0 +1,1 @@
+New: one-click updates. From now on, when a new version is out, Lex Outliner offers Update and Restart and installs it itself. Check any time with Lex Outliner → Check for Updates….
