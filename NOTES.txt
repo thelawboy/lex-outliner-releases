@@ -1,1 +1,1 @@
-Right-click now works: spelling suggestions for a misspelled word (click one to fix it), Learn Spelling, Look Up, and Cut / Copy / Paste. Updates also retry on their own when GitHub is busy, and say plainly what went wrong if they still can't.
+The Touch Bar now fits: Class Mode, then the seven types as one compact strip of icons in their colors, then Outline and Outline beside notes. Before, the buttons after Rule were cut off.

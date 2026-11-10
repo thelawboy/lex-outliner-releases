@@ -15,7 +15,7 @@ const INSIDE = new Set([HOST, 'www.overleaf.com', 'overleaf.com']);
 
 /** The Touch Bar until the page says how it should look: [label, command, color]. */
 const BUTTONS = [
-  ['Class note', 'classnote', '#C2410C'],
+  ['Class Mode', 'classnote', '#C2410C'],
   ['Case', 'case', '#9E1B32'], ['Brief', 'brief', '#9E1B32'], ['Authority', 'authority', '#6A3FA0'], ['Problem', 'problem', '#3D7A2E'],
   ['Summary', 'summary', '#8A6A00'], ['Rule', 'rule', '#1F4FA8'], ['Test', 'test', '#4F4FB8'],
   ['Outline', 'outline', ''], ['Beside notes', 'dual', ''],
@@ -31,26 +31,49 @@ function saveBounds(win) { try { fs.writeFileSync(stateFile(), JSON.stringify(wi
  * the app's own icons as white PNGs at 2x, on each type's color from your Node types; Outline and Beside notes are
  * lit (blue) while showing. Only known commands, #rrggbb colors and small PNG data URLs are taken.
  */
+/** An item's icon as an image, if it sent a small PNG. */
+function iconOf(it) {
+  if (typeof it.icon !== 'string' || !it.icon.startsWith('data:image/png;base64,') || it.icon.length >= 200000) return null;
+  const img = nativeImage.createFromBuffer(Buffer.from(it.icon.slice(22), 'base64'), { scaleFactor: 2 });
+  return img.isEmpty() ? null : img;
+}
+/**
+ * Build the Touch Bar. Items the page marks with a group (1.2.3 on) are laid out compactly so all of them fit beside
+ * the Control Strip: 'mode' items as full buttons (Class Mode, colored while on), 'types' and 'views' as strips of
+ * icons (a segmented control), each icon drawn by the page in its own color. Items without a group (an older page, or
+ * before the page speaks) are full buttons with colored backgrounds, as before.
+ */
 function touchBar(win, items) {
-  const { TouchBarButton, TouchBarSpacer } = TouchBar;
+  const { TouchBarButton, TouchBarSpacer, TouchBarSegmentedControl } = TouchBar;
   const send = cmd => () => { if (!win.isDestroyed()) win.webContents.send('lex:cmd', cmd); };
-  const out = [];
-  for (const it of items) {
-    if (it.gap) out.push(new TouchBarSpacer({ size: 'small' }));
+  const button = it => {
     const opts = { accessibilityLabel: it.label, click: send(it.cmd) };
-    let icon = null;
-    if (typeof it.icon === 'string' && it.icon.startsWith('data:image/png;base64,') && it.icon.length < 200000) {
-      icon = nativeImage.createFromBuffer(Buffer.from(it.icon.slice(22), 'base64'), { scaleFactor: 2 });
-      if (icon.isEmpty()) icon = null;
-    }
+    const icon = iconOf(it);
     if (icon) opts.icon = icon; else opts.label = it.label;
     const color = it.on ? '#0A84FF' : it.color;
     if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) opts.backgroundColor = color;
-    out.push(new TouchBarButton(opts));
+    return new TouchBarButton(opts);
+  };
+  const out = [];
+  for (let i = 0; i < items.length;) {
+    const it = items[i];
+    if (it.group === 'types' || it.group === 'views') {
+      const run = []; while (i < items.length && items[i].group === it.group) run.push(items[i++]);
+      if (out.length) out.push(new TouchBarSpacer({ size: 'small' }));
+      out.push(new TouchBarSegmentedControl({
+        segmentStyle: 'separated', mode: 'buttons',
+        segments: run.map(r => { const icon = iconOf(r); return icon ? { icon } : { label: r.label }; }),
+        change: idx => { if (run[idx]) send(run[idx].cmd)(); },
+      }));
+      continue;
+    }
+    if (it.gap && out.length) out.push(new TouchBarSpacer({ size: 'small' }));
+    out.push(button(it)); i++;
   }
   return new TouchBar({ items: out });
 }
-const defaultItems = () => BUTTONS.map(([label, cmd, color]) => ({ cmd, label, color, gap: GAP_BEFORE.has(cmd) }));
+// Before the page speaks: the same compact layout, with labels in place of icons.
+const defaultItems = () => BUTTONS.map(([label, cmd, color]) => ({ cmd, label, color: cmd === 'classnote' ? '' : color, gap: GAP_BEFORE.has(cmd), group: cmd === 'classnote' ? 'mode' : cmd === 'outline' || cmd === 'dual' ? 'views' : 'types' }));
 const KNOWN = new Set(BUTTONS.map(b => b[1]));
 
 /* Folder backups (backup.js writes them). Settings live in backup.json in the app's own data folder: the folder you
@@ -97,7 +120,7 @@ function open() {
     if (e.sender !== win.webContents || !Array.isArray(items) || items.length > 16) return;
     let host = ''; try { host = new URL(e.senderFrame.url).host; } catch { /* ignore */ }
     if (host !== HOST) return;
-    const clean = items.filter(it => it && KNOWN.has(it.cmd)).map(it => ({ cmd: it.cmd, label: String(it.label || it.cmd).slice(0, 40), icon: it.icon, color: it.color, on: !!it.on, gap: !!it.gap }));
+    const clean = items.filter(it => it && KNOWN.has(it.cmd)).map(it => ({ cmd: it.cmd, label: String(it.label || it.cmd).slice(0, 40), icon: it.icon, color: it.color, on: !!it.on, gap: !!it.gap, group: ['mode', 'types', 'views'].includes(it.group) ? it.group : undefined }));
     if (clean.length) win.setTouchBar(touchBar(win, clean));
   };
   ipcMain.on('lex:bar', onBar);

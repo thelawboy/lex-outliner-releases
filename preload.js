@@ -2,6 +2,8 @@
 // backups (status, choosing the folder, saving a backup's files there, showing it). No other access to files or the system.
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('lexDesktop', {
+  // What this version of the app can do, so the page sends what it understands: 'segments' = compact Touch Bar strips.
+  caps: ['segments'],
   onCommand: cb => { ipcRenderer.on('lex:cmd', (_e, cmd) => cb(String(cmd))); },
   // How the Touch Bar's buttons should look (icons, colors); the app checks what it's given.
   setBar: items => { ipcRenderer.send('lex:bar', items); },

@@ -1,7 +1,7 @@
 {
   "name": "lex-outliner-desktop",
   "productName": "Lex Outliner",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Lex Outliner for the Mac: the web app in its own window, with Touch Bar buttons.",
   "main": "main.js",
   "private": true,
