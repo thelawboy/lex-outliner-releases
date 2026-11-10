@@ -2,7 +2,7 @@
 // with no new download), plus Touch Bar buttons for the node types, folder backups of your notes (backup.js), and
 // updates of this app itself (update.js). The buttons send a command to the page through
 // preload.js; the page runs it like its own toolbar button (src/app/desktop.ts). Nothing here touches your data.
-const { app, BrowserWindow, TouchBar, shell, Menu, ipcMain, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, TouchBar, shell, Menu, ipcMain, nativeImage, dialog, clipboard } = require('electron');
 const { checkUpdates } = require('./update');
 const { writeBackup } = require('./backup');
 const fs = require('fs');
@@ -115,6 +115,26 @@ function open() {
   win.webContents.on('will-navigate', (e, url) => {
     let host = ''; try { host = new URL(url).host; } catch { /* ignore */ }
     if (host !== HOST) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
+  });
+  // Right-click: Electron has no menu of its own, so build the usual one: spelling suggestions for a misspelled word,
+  // Learn Spelling, Look Up, then Cut / Copy / Paste. The page's own menus (a bullet's dot, a table cell) take the click
+  // themselves and this doesn't appear.
+  win.webContents.on('context-menu', (_e, p) => {
+    const items = [];
+    if (p.misspelledWord) {
+      for (const w of (p.dictionarySuggestions || []).slice(0, 6)) items.push({ label: w, click: () => win.webContents.replaceMisspelling(w) });
+      if (!(p.dictionarySuggestions || []).length) items.push({ label: 'No Guesses Found', enabled: false });
+      items.push({ label: 'Learn Spelling', click: () => win.webContents.session.addWordToSpellCheckerDictionary(p.misspelledWord) }, { type: 'separator' });
+    }
+    const sel = (p.selectionText || '').trim();
+    if (sel && process.platform === 'darwin') items.push({ label: `Look Up “${sel.length > 24 ? sel.slice(0, 23) + '…' : sel}”`, click: () => win.webContents.showDefinitionForSelection() }, { type: 'separator' });
+    if (p.linkURL && /^https?:/.test(p.linkURL)) items.push({ label: 'Open Link in Browser', click: () => shell.openExternal(p.linkURL) }, { label: 'Copy Link', click: () => clipboard.writeText(p.linkURL) }, { type: 'separator' });
+    if (p.isEditable) {
+      const f = p.editFlags || {};
+      items.push({ role: 'cut', enabled: !!f.canCut }, { role: 'copy', enabled: !!f.canCopy }, { role: 'paste', enabled: !!f.canPaste }, { role: 'pasteAndMatchStyle', enabled: !!f.canPaste }, { type: 'separator' }, { role: 'selectAll' });
+    } else if (sel) items.push({ role: 'copy' });
+    while (items.length && items[items.length - 1].type === 'separator') items.pop();
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
   });
   win.loadURL(HOME);
   return win;

@@ -30,9 +30,26 @@ function selfPath() {
   try { fs.accessSync(path.dirname(p), fs.constants.W_OK); fs.accessSync(p, fs.constants.W_OK); return p; } catch { return null; }
 }
 
+/** Plain words for a failed request. */
+class Trouble extends Error {}
+const say = status => (status >= 500 || status === 429 ? `GitHub is having trouble right now (error ${status}). Try again in a few minutes.` : status === 404 ? 'The update wasn’t found on GitHub.' : `GitHub answered with error ${status}.`);
+/** A request, tried up to three times when GitHub is busy or the connection drops (2 s, then 6 s apart). */
+async function get(url, opts = {}) {
+  let last;
+  for (const wait of [0, 2000, 6000]) {
+    if (wait) await new Promise(res => setTimeout(res, wait));
+    try {
+      const r = await net.fetch(url, opts);
+      if (r.ok) return r;
+      last = new Trouble(say(r.status));
+      if (!(r.status >= 500 || r.status === 429)) break;
+    } catch { last = new Trouble('Lex couldn’t reach GitHub. Check your connection and try again.'); }
+  }
+  throw last;
+}
+
 async function latest() {
-  const r = await net.fetch(LATEST, { cache: 'no-store' });
-  if (!r.ok) throw new Error(`latest.json: ${r.status}`);
+  const r = await get(LATEST, { cache: 'no-store' });
   const j = await r.json();
   if (!j || typeof j.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(j.version) || typeof j.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(j.sha256)) throw new Error('latest.json is malformed');
   return { version: j.version, sha256: j.sha256, notes: typeof j.notes === 'string' ? j.notes.slice(0, 600) : '' };
@@ -40,8 +57,8 @@ async function latest() {
 
 /** Download the release's zip to a file, showing progress on the Dock icon, and return its sha256. */
 async function download(win, version, file) {
-  const r = await net.fetch(zipUrl(version));
-  if (!r.ok || !r.body) throw new Error(`download: ${r.status}`);
+  const r = await get(zipUrl(version));
+  if (!r.body) throw new Trouble('The download was empty. Try again in a few minutes.');
   const total = +r.headers.get('content-length') || 0;
   const hash = crypto.createHash('sha256'); const out = fs.createWriteStream(file);
   const reader = r.body.getReader(); let got = 0;
@@ -89,8 +106,10 @@ async function install(win, info, target) {
  */
 async function checkUpdates(win, asked) {
   let info;
-  try { info = await latest(); } catch {
-    if (asked) dialog.showMessageBox(win, { message: 'Couldn’t check for updates', detail: 'Lex couldn’t reach GitHub. Try again when you’re online.' });
+  try { info = await latest(); } catch (e) {
+    // On its own, a failed check stays quiet and tries again in half an hour; asked from the menu, it says why.
+    if (asked) dialog.showMessageBox(win, { message: 'Couldn’t check for updates', detail: e instanceof Trouble ? e.message : 'Lex couldn’t read the update information. Try again in a few minutes.' });
+    else setTimeout(() => { if (!win.isDestroyed()) checkUpdates(win, false); }, 30 * 60 * 1000);
     return;
   }
   if (!newer(info.version, app.getVersion())) {
