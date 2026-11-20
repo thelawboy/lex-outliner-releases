@@ -8,11 +8,16 @@ Never put secrets, notes or the web app's code here.
 - `main.js` window + Touch Bar + right-click menu (`context-menu`: spelling suggestions and Learn Spelling from macOS's
   spellchecker, Look Up, Cut/Copy/Paste; Electron has none by default; the page's own menus prevent it) (page-described buttons through `lex:bar`; items with a `group` (preload `caps: ['segments']`, 1.2.3 on) become one
   full button for 'mode' and segmented-control strips for 'types'/'views', so all fit beside the Control Strip; validated: known commands, #rrggbb, small PNG
-  data URLs, only from the site's own frame). `preload.js` exposes `onCommand`, `setBar`, `caps` and `backup`.
+  data URLs, only from the site's own frame). `preload.js` exposes `onCommand`, `setBar`, `caps`, `backup` and `creds`.
 - `backup.js` folder backups: the page sends files ({name, text}: hornbook-backup.json, markdown/*.md); `clean` refuses
   anything else; written to <folder>/Latest (swapped in whole) and Daily/<date> (30 kept). Settings in userData/backup.json;
   IPC `lex:backup-*` (only from the site's frame); File menu items; offered once on first launch. `npm test` runs
   test/backup.test.cjs (also in the release workflow).
+- `creds.js` Remember me (1.2.4 on): the sign-in screen's email and password, saved when you sign in with Remember me
+  ticked, in userData/signin.json encrypted with safeStorage (a key in the Keychain; nothing kept if that's unavailable),
+  mode 600; IPC `lex:creds-get/save/clear` only from the site's frame; preload `creds` and caps 'creds'; File menu →
+  Forget Saved Password. Ad hoc signing means macOS may ask once after an update to let the app use its Keychain item.
+  `npm test` runs test/creds.test.cjs too.
 - `update.js` self-updater (no Apple account, so no Squirrel/electron-updater): `latest.json` from the newest release,
   zip from `releases/download/v<version>/` of this repo only (requests retried on 5xx/429/network errors, `get`; automatic
   checks that fail stay quiet and retry in 30 min; errors in plain words, `Trouble`), SHA-256 checked, `codesign --verify`, then a detached

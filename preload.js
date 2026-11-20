@@ -1,13 +1,21 @@
 // What the page gets from the desktop app: Touch Bar commands by name, a way to say how the buttons look, and folder
-// backups (status, choosing the folder, saving a backup's files there, showing it). No other access to files or the system.
+// backups (status, choosing the folder, saving a backup's files there, showing it), and Remember me's saved sign-in.
+// No other access to files or the system.
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('lexDesktop', {
   // What this version of the app can do, so the page sends what it understands: 'segments' = compact Touch Bar strips.
-  caps: ['segments'],
+  // 'creds' (1.2.4 on) = Remember me: the sign-in screen can fill in your saved email and password.
+  caps: ['segments', 'creds'],
   onCommand: cb => { ipcRenderer.on('lex:cmd', (_e, cmd) => cb(String(cmd))); },
   // How the Touch Bar's buttons should look (icons, colors); the app checks what it's given.
   setBar: items => { ipcRenderer.send('lex:bar', items); },
   // Folder backups: the page builds the files; the app writes them into the folder you chose (backup.js).
+  // Remember me: your email and password, kept with your Mac's Keychain (creds.js); only the site's own page may ask.
+  creds: {
+    get: () => ipcRenderer.invoke('lex:creds-get'),
+    save: c => ipcRenderer.invoke('lex:creds-save', c),
+    clear: () => ipcRenderer.invoke('lex:creds-clear'),
+  },
   backup: {
     status: () => ipcRenderer.invoke('lex:backup-status'),
     choose: () => ipcRenderer.invoke('lex:backup-choose'),

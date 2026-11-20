@@ -1,1 +1,1 @@
-The Touch Bar now fits: Class Mode, then the seven types as one compact strip of icons in their colors, then Outline and Outline beside notes. Before, the buttons after Rule were cut off.
+Remember me: tick it when you sign in and the app fills in your email and password next time, saved with your Mac’s Keychain (File → Forget Saved Password clears it). After this update macOS may ask once whether Lex Outliner may use its Keychain item: choose Always Allow.

@@ -1,10 +1,11 @@
 // Lex Outliner for the Mac: a window that opens the web app (so every update to lex.nicholasgirard.com shows up here
 // with no new download), plus Touch Bar buttons for the node types, folder backups of your notes (backup.js), and
-// updates of this app itself (update.js). The buttons send a command to the page through
+// updates of this app itself (update.js), and Remember me's saved sign-in (creds.js). The buttons send a command to the page through
 // preload.js; the page runs it like its own toolbar button (src/app/desktop.ts). Nothing here touches your data.
-const { app, BrowserWindow, TouchBar, shell, Menu, ipcMain, nativeImage, dialog, clipboard } = require('electron');
+const { app, BrowserWindow, TouchBar, shell, Menu, ipcMain, nativeImage, dialog, clipboard, safeStorage } = require('electron');
 const { checkUpdates } = require('./update');
 const { writeBackup } = require('./backup');
+const { makeCreds } = require('./creds');
 const fs = require('fs');
 const path = require('path');
 
@@ -90,6 +91,11 @@ async function bkChoose(win) {
 /** Only the page from Lex's own site, in our window, may use these. */
 const fromSite = e => { try { return new URL(e.senderFrame.url).host === HOST; } catch { return false; } };
 ipcMain.handle('lex:backup-status', e => (fromSite(e) ? bkStatus() : null));
+// Remember me (creds.js): the sign-in screen reads, saves or forgets your email and password, kept with the Keychain.
+const creds = makeCreds(() => path.join(app.getPath('userData'), 'signin.json'), safeStorage);
+ipcMain.handle('lex:creds-get', e => (fromSite(e) ? creds.read() : null));
+ipcMain.handle('lex:creds-save', (e, c) => { if (!fromSite(e)) return false; try { return creds.save(c); } catch { return false; } });
+ipcMain.handle('lex:creds-clear', e => { if (fromSite(e)) creds.clear(); });
 ipcMain.handle('lex:backup-choose', e => (fromSite(e) ? bkChoose(BrowserWindow.fromWebContents(e.sender)) : null));
 ipcMain.handle('lex:backup-show', e => { if (fromSite(e)) { const f = bkRead().folder; if (f) shell.openPath(f); } });
 ipcMain.handle('lex:backup-save', async (e, files) => {
@@ -165,7 +171,7 @@ function open() {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: app.name, submenu: [{ role: 'about' }, { label: 'Check for Updates…', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) checkUpdates(w, true); } }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }, { label: 'File', submenu: [{ label: 'Back Up Now', accelerator: 'CmdOrCtrl+Shift+B', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) w.webContents.send('lex:cmd', 'backup-now'); } }, { label: 'Choose Backup Folder…', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) bkChoose(w); } }, { label: 'Show Backups in Finder', click: () => { const f = bkRead().folder; if (f) shell.openPath(f); } }, { type: 'separator' }, { role: 'close' }] }, { role: 'editMenu' },
+    { label: app.name, submenu: [{ role: 'about' }, { label: 'Check for Updates…', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) checkUpdates(w, true); } }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }, { label: 'File', submenu: [{ label: 'Back Up Now', accelerator: 'CmdOrCtrl+Shift+B', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) w.webContents.send('lex:cmd', 'backup-now'); } }, { label: 'Choose Backup Folder…', click: () => { const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]; if (w) bkChoose(w); } }, { label: 'Show Backups in Finder', click: () => { const f = bkRead().folder; if (f) shell.openPath(f); } }, { type: 'separator' }, { label: 'Forget Saved Password', click: () => { creds.clear(); dialog.showMessageBox({ message: 'Your saved password is forgotten.', detail: 'Next time you sign in, it won’t be filled in for you. Tick Remember me to save it again.' }); } }, { type: 'separator' }, { role: 'close' }] }, { role: 'editMenu' },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, { type: 'separator' }, { role: 'toggleDevTools' }] },
     { role: 'windowMenu' },
   ]));
